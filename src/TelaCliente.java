@@ -24,7 +24,7 @@ public class TelaCliente extends javax.swing.JFrame {
     }
 
     private void initComponents() {
-        setTitle("Cadastro de Clientes");
+        setTitle("PesqueMais - Cadastro de Clientes");
         setSize(720, 540);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE); // Fecha só essa janela. 

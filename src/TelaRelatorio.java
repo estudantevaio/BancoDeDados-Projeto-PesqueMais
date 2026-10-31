@@ -18,13 +18,13 @@ public class TelaRelatorio extends javax.swing.JFrame {
     }
 
     private void initComponents() {
-        setTitle("Relatório de Vendas - Pesque Mais");
+        setTitle("PesqueMais - Relatório de Vendas");
         setSize(1000, 600);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setLayout(null);
 
-        lblTitulo = new JLabel("Relatório de Vendas - Pesque Mais: Cliente - Item - Marca - Categoria - Preço - Quantidade - Total");
+        lblTitulo = new JLabel("Relatório de Vendas: Cliente - Item - Marca - Categoria - Preço - Quantidade - Total");
         lblTitulo.setBounds(20, 15, 900, 25);
         lblTitulo.setFont(new java.awt.Font("Arial", 1, 14));
         add(lblTitulo);

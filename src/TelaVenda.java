@@ -49,7 +49,7 @@ public class TelaVenda extends javax.swing.JFrame {
     // MONTAGEM DA TELA
     // ============================================================
     private void initComponents() {
-        setTitle("Registro de Vendas");
+        setTitle("PesqueMais - Registro de Vendas");
         setSize(950, 720);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);

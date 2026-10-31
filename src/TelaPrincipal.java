@@ -15,7 +15,7 @@ public class TelaPrincipal extends javax.swing.JFrame {
         setDefaultCloseOperation(EXIT_ON_CLOSE);  // Fecha o programa todo. 
         setLayout(null);                          // Posicionamento manual. 
 
-        JLabel lblTitulo = new JLabel("Pesque Mais");
+        JLabel lblTitulo = new JLabel("Menu Principal");
         lblTitulo.setBounds(20, 15, 380, 30);
         lblTitulo.setFont(new java.awt.Font("Arial", 1, 20));
         lblTitulo.setHorizontalAlignment(SwingConstants.CENTER);

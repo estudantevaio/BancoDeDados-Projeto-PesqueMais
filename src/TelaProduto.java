@@ -38,7 +38,7 @@ public class TelaProduto extends javax.swing.JFrame {
     }
 
     private void initComponents() {
-        setTitle("Cadastro de Produtos - Pesque Mais");
+        setTitle("PesqueMais - Cadastro de Produtos");
         setSize(940, 600);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
@@ -49,7 +49,7 @@ public class TelaProduto extends javax.swing.JFrame {
         lblNome.setBounds(20, 20, 60, 25);
         add(lblNome);
         txtNome = new JTextField();
-        txtNome.setBounds(80, 20, 350, 25);
+        txtNome.setBounds(90, 20, 340, 25);
         add(txtNome);
 
         lblMarca = new JLabel("Marca:");
@@ -71,11 +71,11 @@ public class TelaProduto extends javax.swing.JFrame {
         lblPreco.setBounds(260, 55, 50, 25);
         add(lblPreco);
         txtPreco = new JTextField();
-        txtPreco.setBounds(310, 55, 110, 25);
+        txtPreco.setBounds(310, 55, 120, 25);
         add(txtPreco);
 
         lblEstoque = new JLabel("Estoque:");
-        lblEstoque.setBounds(440, 55, 70, 25);
+        lblEstoque.setBounds(450, 55, 70, 25);
         add(lblEstoque);
         txtEstoque = new JTextField();
         txtEstoque.setBounds(510, 55, 100, 25);
