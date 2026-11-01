@@ -17,12 +17,13 @@ public class VendaBanco {
         this.conn = this.conexao.getConexao();
     }
 
-    // READ: Lista todas as vendas com o nome do cliente. 
+    // ============================================================
+    // READ — lista vendas com o nome do cliente. 
+    // ============================================================
     public List<Venda> getVendas() {
         String sql = "SELECT v.id_venda, v.id_cliente, c.nome AS nome_cliente, v.data_venda, v.total " +
                      "FROM venda v JOIN cliente c ON v.id_cliente = c.id_cliente " +
                      "ORDER BY v.id_venda DESC";
-
         try {
             PreparedStatement stmt = conn.prepareStatement(sql);
             ResultSet rs = stmt.executeQuery();
@@ -43,13 +44,14 @@ public class VendaBanco {
         }
     }
 
-    // READ: Busca os itens de uma venda específica.
+    // ============================================================
+    // READ — itens de uma venda. 
+    // ============================================================
     public List<ItemVenda> getItensVenda(int idVenda) {
         String sql = "SELECT iv.id_item, iv.id_venda, iv.id_produto, p.nome AS nome_produto, " +
                      "iv.quantidade, iv.preco_unitario, iv.subtotal " +
                      "FROM item_venda iv JOIN produto p ON iv.id_produto = p.id_produto " +
                      "WHERE iv.id_venda = ?";
-
         try {
             PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setInt(1, idVenda);
@@ -73,16 +75,102 @@ public class VendaBanco {
         }
     }
 
-    // CREATE: Insere a venda e todos os itens em uma única transação.
+    // ============================================================
+    // AUXILIAR: versão interna que LANÇA exceção  
+    // (usada dentro de transação: se falhar, tem que propagar). 
+    // ============================================================
+    private List<ItemVenda> buscarItensDaVenda(int idVenda) throws SQLException {
+        String sql = "SELECT id_item, id_venda, id_produto, quantidade, preco_unitario, subtotal " +
+                     "FROM item_venda WHERE id_venda = ?";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setInt(1, idVenda);
+        ResultSet rs = stmt.executeQuery();
+        List<ItemVenda> itens = new ArrayList<>();
+        while (rs.next()) {
+            ItemVenda iv = new ItemVenda();
+            iv.setId(rs.getInt("id_item"));
+            iv.setIdVenda(rs.getInt("id_venda"));
+            iv.setIdProduto(rs.getInt("id_produto"));
+            iv.setQuantidade(rs.getInt("quantidade"));
+            iv.setPrecoUnitario(rs.getDouble("preco_unitario"));
+            iv.setSubtotal(rs.getDouble("subtotal"));
+            itens.add(iv);
+        }
+        return itens;
+    }
+
+    // ============================================================
+    // AUXILIAR: valida se há estoque suficiente
+    // (retorna null se OK, ou mensagem de erro se faltar). 
+    // ============================================================
+    private String validarEstoque(List<ItemVenda> itens) throws SQLException {
+        String sql = "SELECT nome, estoque FROM produto WHERE id_produto = ?";
+        for (ItemVenda item : itens) {
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setInt(1, item.getIdProduto());
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                int disponivel = rs.getInt("estoque");
+                if (disponivel < item.getQuantidade()) {
+                    return "Estoque insuficiente para '" + rs.getString("nome") +
+                           "'. Disponível: " + disponivel +
+                           ", solicitado: " + item.getQuantidade();
+                }
+            } else {
+                return "Produto ID " + item.getIdProduto() + " não encontrado.";
+            }
+        }
+        return null;
+    }
+
+    // ============================================================
+    // AUXILIAR: baixa o estoque, subtraindo a quantidade. 
+    // ============================================================
+    private void baixarEstoque(List<ItemVenda> itens) throws SQLException {
+        String sql = "UPDATE produto SET estoque = estoque - ? WHERE id_produto = ?";
+        for (ItemVenda item : itens) {
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setInt(1, item.getQuantidade());
+            stmt.setInt(2, item.getIdProduto());
+            stmt.execute();
+        }
+    }
+
+    // ============================================================
+    // AUXILIAR: devolve o estoque, somando a quantidade. 
+    // ============================================================
+    private void devolverEstoque(List<ItemVenda> itens) throws SQLException {
+        String sql = "UPDATE produto SET estoque = estoque + ? WHERE id_produto = ?";
+        for (ItemVenda item : itens) {
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setInt(1, item.getQuantidade());
+            stmt.setInt(2, item.getIdProduto());
+            stmt.execute();
+        }
+    }
+
+    // ============================================================
+    // CREATE — insere venda + itens + abaixa o estoque  
+    // (lança RuntimeException em caso de erro). 
+    // ============================================================
     public void inserir(Venda venda, List<ItemVenda> itens) {
+        // 1.) Valida estoque ANTES de abrir a transação. 
+        try {
+            String erro = validarEstoque(itens);
+            if (erro != null) {
+                throw new RuntimeException(erro);
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("Erro ao validar estoque: " + ex.getMessage());
+        }
+
         String sqlVenda = "INSERT INTO venda (id_cliente, total) VALUES (?, ?)";
         String sqlItem  = "INSERT INTO item_venda (id_venda, id_produto, quantidade, preco_unitario, subtotal) VALUES (?, ?, ?, ?, ?)";
 
         try {
-            // 1.) Desliga o autocommit: Nada é gravado até o commit().
             conn.setAutoCommit(false);
 
-            // 2.) Insere a venda e recupera o ID gerado automaticamente.
+            // 2.) Insere a venda e recupera o ID gerado. 
             PreparedStatement stmtVenda = conn.prepareStatement(sqlVenda, Statement.RETURN_GENERATED_KEYS);
             stmtVenda.setInt(1, venda.getIdCliente());
             stmtVenda.setDouble(2, venda.getTotal());
@@ -90,11 +178,9 @@ public class VendaBanco {
 
             ResultSet rsKeys = stmtVenda.getGeneratedKeys();
             int idVenda = 0;
-            if (rsKeys.next()) {
-                idVenda = rsKeys.getInt(1); // ID da venda recém-criada
-            }
+            if (rsKeys.next()) idVenda = rsKeys.getInt(1);
 
-            // 3.) Insere cada item vinculado à venda.
+            // 3.) Insere os itens. 
             PreparedStatement stmtItem = conn.prepareStatement(sqlItem);
             for (ItemVenda item : itens) {
                 stmtItem.setInt(1, idVenda);
@@ -105,29 +191,23 @@ public class VendaBanco {
                 stmtItem.execute();
             }
 
-            // 4.) Confirma: Tudo é gravado junto no banco.
+            // 4. ) Baixa o estoque de cada produto, dentro da mesma transação. 
+            baixarEstoque(itens);
+
             conn.commit();
             System.out.println("Venda registrada com sucesso (ID " + idVenda + ").");
 
         } catch (SQLException ex) {
-            // Se qualquer coisa der errado, desfaz tudo.
-            try {
-                conn.rollback();
-                System.out.println("Transação desfeita: " + ex.getMessage());
-            } catch (SQLException e2) {
-                System.out.println("Erro no rollback: " + e2.getMessage());
-            }
+            try { conn.rollback(); } catch (SQLException e2) { }
+            throw new RuntimeException("Erro ao registrar venda: " + ex.getMessage());
         } finally {
-            // Devolve a conexão ao modo normal.
-            try { 
-                conn.setAutoCommit(true); 
-            } catch (SQLException e) {
-                
-            }
+            try { conn.setAutoCommit(true); } catch (SQLException e) { }
         }
     }
 
-    // UPDATE: Atualiza a venda: Apaga os itens antigos e reagrava a transação. 
+    // ============================================================
+    // UPDATE — atualiza venda + ajusta o estoque.  
+    // ============================================================
     public void editar(Venda venda, List<ItemVenda> itens) {
         String sqlVenda    = "UPDATE venda SET id_cliente = ?, total = ? WHERE id_venda = ?";
         String sqlDelItens = "DELETE FROM item_venda WHERE id_venda = ?";
@@ -136,18 +216,32 @@ public class VendaBanco {
         try {
             conn.setAutoCommit(false);
 
+            // 1.) Busca os itens antigos da venda. 
+            List<ItemVenda> itensAntigos = buscarItensDaVenda(venda.getId());
+
+            // 2.) Devolve o estoque dos itens antigos, somando de volta. 
+            devolverEstoque(itensAntigos);
+
+            // 3.) Valida o estoque dos novos itens, agora que os antigos já voltaram. 
+            String erro = validarEstoque(itens);
+            if (erro != null) {
+                conn.rollback();
+                throw new RuntimeException(erro);
+            }
+
+            // 4.) Atualiza a venda. 
             PreparedStatement stmtVenda = conn.prepareStatement(sqlVenda);
             stmtVenda.setInt(1, venda.getIdCliente());
             stmtVenda.setDouble(2, venda.getTotal());
             stmtVenda.setInt(3, venda.getId());
             stmtVenda.execute();
 
-            // Apaga os itens antigos.
+            // 5.) Apaga os itens antigos.
             PreparedStatement stmtDel = conn.prepareStatement(sqlDelItens);
             stmtDel.setInt(1, venda.getId());
             stmtDel.execute();
 
-            // Regrava os itens novos .
+            // 6.) Insere os novos itens. 
             PreparedStatement stmtItem = conn.prepareStatement(sqlItem);
             for (ItemVenda item : itens) {
                 stmtItem.setInt(1, venda.getId());
@@ -158,45 +252,61 @@ public class VendaBanco {
                 stmtItem.execute();
             }
 
+            // 7.) Baixa o estoque dos novos itens. 
+            baixarEstoque(itens);
+
             conn.commit();
             System.out.println("Venda atualizada com sucesso.");
 
         } catch (SQLException ex) {
-            try {
-                conn.rollback();
-                System.out.println("Transação desfeita: " + ex.getMessage());
-            } catch (SQLException e2) {
-                System.out.println("Erro no rollback: " + e2.getMessage());
-            }
+            try { conn.rollback(); } catch (SQLException e2) { }
+            throw new RuntimeException("Erro ao atualizar venda: " + ex.getMessage());
         } finally {
             try { conn.setAutoCommit(true); } catch (SQLException e) { }
         }
     }
 
-    // DELETE: Exclui a venda.
+    // ============================================================
+    // DELETE — exclui venda + devolve o estoque. 
+    // ============================================================
     public void excluir(int id) {
         String sql = "DELETE FROM venda WHERE id_venda = ?";
 
         try {
+            conn.setAutoCommit(false);
+
+            // 1.) Busca os itens da venda. 
+            List<ItemVenda> itens = buscarItensDaVenda(id);
+
+            // 2.) Devolve o estoque de todos eles, somando todos. 
+            devolverEstoque(itens);
+
+            // 3.) Exclui a venda. 
             PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setInt(1, id);
             stmt.execute();
+
+            conn.commit();
             System.out.println("Venda excluída com sucesso.");
+
         } catch (SQLException ex) {
-            System.out.println("Erro ao excluir venda. " + ex.getMessage());
+            try { conn.rollback(); } catch (SQLException e2) { }
+            throw new RuntimeException("Erro ao excluir venda: " + ex.getMessage());
+        } finally {
+            try { conn.setAutoCommit(true); } catch (SQLException e) { }
         }
     }
 
-    // READ: Relatório que usa a VIEW criada no banco, retornando as linhas prontas para a JTable.
+    // ============================================================
+    // READ — relatório da view. 
+    // ============================================================
     public List<Object[]> getRelatorio() {
         String sql = "SELECT * FROM vw_relatorio_vendas ORDER BY cliente";
-
         try {
             PreparedStatement stmt = conn.prepareStatement(sql);
             ResultSet rs = stmt.executeQuery();
             List<Object[]> linhas = new ArrayList<>();
             while (rs.next()) {
-                // Cada linha do relatório é um array de 7 colunas na ordem da view
                 Object[] linha = new Object[] {
                     rs.getString("cliente"),
                     rs.getString("item"),

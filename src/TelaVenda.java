@@ -209,18 +209,15 @@ public class TelaVenda extends javax.swing.JFrame {
     // ============================================================
     // ADICIONAR ITEM AO CARRINHO
     // ============================================================
-    private void adicionarItem() {
-        // Valida o cliente. 
+        private void adicionarItem() {
         if (cmbCliente.getSelectedIndex() <= 0) {
             JOptionPane.showMessageDialog(this, "Selecione um cliente.", "Atenção", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        // Valida o produto. 
         if (cmbProduto.getSelectedIndex() <= 0) {
             JOptionPane.showMessageDialog(this, "Selecione um produto.", "Atenção", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        // Valida a quantidade. 
         int qtd;
         try {
             qtd = Integer.parseInt(txtQtd.getText().trim());
@@ -230,10 +227,26 @@ public class TelaVenda extends javax.swing.JFrame {
             return;
         }
 
-        // Pega o produto selecionado (índice -1, porque a primeira linha é o "Selecione"). 
         Produto p = produtos.get(cmbProduto.getSelectedIndex() - 1);
 
-        // Monta o item. 
+        // Valida o estoque antes de adicionar. 
+        int qtdJaNoCarrinho = 0;
+        for (ItemVenda iv : itensEdicao) {
+            if (iv.getIdProduto() == p.getId()) {
+                qtdJaNoCarrinho += iv.getQuantidade();
+            }
+        }
+        int qtdTotal = qtdJaNoCarrinho + qtd;
+        if (qtdTotal > p.getEstoque()) {
+            JOptionPane.showMessageDialog(this,
+                "Estoque insuficiente para '" + p.getNome() + "'.\n" +
+                "Disponível: " + p.getEstoque() + "\n" +
+                "Já no carrinho: " + qtdJaNoCarrinho + "\n" +
+                "Você está pedindo: " + qtd,
+                "Atenção", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
         ItemVenda item = new ItemVenda();
         item.setIdProduto(p.getId());
         item.setNomeProduto(p.getNome());
@@ -241,7 +254,6 @@ public class TelaVenda extends javax.swing.JFrame {
         item.setPrecoUnitario(p.getPreco());
         item.setSubtotal(p.getPreco() * qtd);
 
-        // Adiciona na lista e na tabela. 
         itensEdicao.add(item);
         DefaultTableModel modelo = (DefaultTableModel) tblItens.getModel();
         modelo.addRow(item.obterDados());
@@ -324,7 +336,7 @@ public class TelaVenda extends javax.swing.JFrame {
     // ============================================================
     // CREATE — Salvar nova venda
     // ============================================================
-    private void salvar() {
+        private void salvar() {
         if (idVendaSelecionada != 0) {
             JOptionPane.showMessageDialog(this, "Você está editando uma venda existente. Use 'Alterar' ou 'Nova Venda'.", "Atenção", JOptionPane.WARNING_MESSAGE);
             return;
@@ -343,16 +355,21 @@ public class TelaVenda extends javax.swing.JFrame {
         v.setIdCliente(c.getId());
         v.setTotal(calcularTotal());
 
-        banco.inserir(v, itensEdicao);
-        carregarVendas();
-        novaVenda();
-        JOptionPane.showMessageDialog(this, "Venda registrada com sucesso!");
+        try {
+            banco.inserir(v, itensEdicao);
+            carregarVendas();
+            carregarCombos();   // Atualiza o estoque exibido nos combos. 
+            novaVenda();
+            JOptionPane.showMessageDialog(this, "Venda registrada com sucesso!");
+        } catch (RuntimeException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Erro ao registrar venda", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     // ============================================================
     // UPDATE — Alterar venda selecionada
     // ============================================================
-    private void alterar() {
+        private void alterar() {
         if (idVendaSelecionada == 0) {
             JOptionPane.showMessageDialog(this, "Selecione uma venda na tabela para alterar.", "Atenção", JOptionPane.WARNING_MESSAGE);
             return;
@@ -372,26 +389,36 @@ public class TelaVenda extends javax.swing.JFrame {
         v.setIdCliente(c.getId());
         v.setTotal(calcularTotal());
 
-        banco.editar(v, itensEdicao);
-        carregarVendas();
-        novaVenda();
-        JOptionPane.showMessageDialog(this, "Venda alterada com sucesso!");
+        try {
+            banco.editar(v, itensEdicao);
+            carregarVendas();
+            carregarCombos();
+            novaVenda();
+            JOptionPane.showMessageDialog(this, "Venda alterada com sucesso!");
+        } catch (RuntimeException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Erro ao alterar venda", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     // ============================================================
     // DELETE — Excluir venda selecionada
     // ============================================================
-    private void excluir() {
+        private void excluir() {
         if (idVendaSelecionada == 0) {
             JOptionPane.showMessageDialog(this, "Selecione uma venda na tabela para excluir.", "Atenção", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        int resp = JOptionPane.showConfirmDialog(this, "Excluir esta venda e todos os seus itens?", "Confirmação", JOptionPane.YES_NO_OPTION);
+        int resp = JOptionPane.showConfirmDialog(this, "Excluir esta venda e todos os seus itens? O estoque será devolvido.", "Confirmação", JOptionPane.YES_NO_OPTION);
         if (resp == JOptionPane.YES_OPTION) {
-            banco.excluir(idVendaSelecionada);
-            carregarVendas();
-            novaVenda();
-            JOptionPane.showMessageDialog(this, "Venda excluída.");
+            try {
+                banco.excluir(idVendaSelecionada);
+                carregarVendas();
+                carregarCombos();
+                novaVenda();
+                JOptionPane.showMessageDialog(this, "Venda excluída. Estoque devolvido.");
+            } catch (RuntimeException ex) {
+                JOptionPane.showMessageDialog(this, ex.getMessage(), "Erro ao excluir venda", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 
